@@ -43,19 +43,9 @@ export async function POST(req: NextRequest) {
   try {
     const result = await predictWinner(radiantHeroIds, direHeroIds);
 
-    // Log de la predicción para poder medir drift más adelante (fire-and-forget)
-    supabaseAdmin
-      .from("predictions_log")
-      .insert({
-        radiant_hero_ids: radiantHeroIds,
-        dire_hero_ids: direHeroIds,
-        predicted_prob_radiant: result.probabilityRadiant,
-        predicted_winner: result.predictedWinner,
-        model_version: result.modelVersion,
-        client_ip: req.headers.get("x-forwarded-for") ?? null,
-      })
-      .then(() => {})
-      .catch(() => {});
+    // Log de la predicción para poder medir drift más adelante (fire-and-forget:
+    // no bloquea la respuesta ni la hace fallar si el log falla).
+    logPrediction(req, radiantHeroIds, direHeroIds, result);
 
     return NextResponse.json({
       probability_radiant: result.probabilityRadiant,
@@ -65,5 +55,25 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? "Error interno." }, { status: 500 });
+  }
+}
+
+async function logPrediction(
+  req: NextRequest,
+  radiantHeroIds: number[],
+  direHeroIds: number[],
+  result: { probabilityRadiant: number; predictedWinner: "radiant" | "dire"; modelVersion: string }
+) {
+  try {
+    await supabaseAdmin.from("predictions_log").insert({
+      radiant_hero_ids: radiantHeroIds,
+      dire_hero_ids: direHeroIds,
+      predicted_prob_radiant: result.probabilityRadiant,
+      predicted_winner: result.predictedWinner,
+      model_version: result.modelVersion,
+      client_ip: req.headers.get("x-forwarded-for") ?? null,
+    });
+  } catch {
+    // No queremos que un fallo de logging tumbe la respuesta de predicción.
   }
 }
