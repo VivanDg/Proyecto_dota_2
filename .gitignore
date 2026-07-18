@@ -1,0 +1,20 @@
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+
+# Python
+data-pipeline/__pycache__/
+data-pipeline/*.pyc
+data-pipeline/.venv/
+data-pipeline/models/
+data-pipeline/data/
+
+# Entorno
+.env
+.env.local
+**/.env
+**/.env.local
+
+# Sistema
+.DS_Store

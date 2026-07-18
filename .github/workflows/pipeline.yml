@@ -1,0 +1,51 @@
+name: Dota 2 data pipeline
+
+on:
+  schedule:
+    # Todos los lunes a las 06:00 UTC. Ajusta según qué tan seguido salen
+    # partidas tier 1 nuevas (en semanas de torneo grande, puedes correrlo
+    # manualmente más seguido con workflow_dispatch).
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      force_promote:
+        description: "Promover el nuevo modelo aunque no mejore al activo"
+        type: boolean
+        default: false
+
+jobs:
+  ingest_and_retrain:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: data-pipeline
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: data-pipeline/requirements.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ingestar partidas nuevas de OpenDota
+        run: python ingest.py
+
+      - name: Reentrenar modelo
+        id: train
+        run: |
+          python train.py | tee train_output.log
+          RUN_DIR=$(grep -oP '(?<=Artefactos guardados en ).*' train_output.log)
+          echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Exportar a ONNX y promover si mejora
+        run: |
+          python export_onnx.py --run-dir "${{ steps.train.outputs.run_dir }}" \
+            ${{ inputs.force_promote == true && '--force' || '' }}
